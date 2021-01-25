@@ -6,9 +6,16 @@
 #include <ArduinoOTA.h>
 #include "Wifi.h"
 
-int soil_sensor_pin = 0;
-int pump_pin = 4;
+const char soil_sensor_pin = 0;
+const char pump_pin = 4;
+
 int moisture = 0;
+int pumpStatus = LOW;
+
+unsigned long sensorTimer = 0;
+unsigned long pumpOnTimer = 0;
+unsigned long pumpOffTimer = 10001;
+
 
 void connectToMqtt();
 
@@ -176,22 +183,25 @@ void loop() {
 
   unsigned long now = millis();
 
-  if (now - sensor_timer >= 15000) {
-    sensor_timer = now;
+  //Take soil reading every 15 seconds
+  if (now - sensorTimer >= 15000) {
     moisture = analogRead(soil_sensor_pin);  
+    sensorTimer = now;
     mqttClient.publish("soilmoisture", 0, true, String(moisture).c_str());  
-    Serial.println(moisture);
+  }
+  
+  //Turn pump on if soil is dry & hasn't been on for > 10 seconds
+  if ((moisture >= 700) && (pumpStatus == LOW) && (now - pumpOffTimer >= 10000)) {
+    pumpStatus = HIGH;
+    pumpOnTimer = now;
+    digitalWrite(pump_pin, pumpStatus);
   }
 
-  if (moisture >= 700) {
-    digitalWrite(pump_pin, HIGH);
-    Serial.println("Pump on");
-    pump_timer = now;
+  //Turn pump off after 10 seconds
+  if ((pumpStatus == HIGH) && (now - pumpOnTimer >= 10000)) {
+    pumpStatus = LOW;
+    pumpOffTimer = now;
+    digitalWrite(pump_pin, pumpStatus);
   }
 
-  if ((pump_pin == HIGH) && (now - pump_timer >= 5000)) {
-    pump_timer = now;
-    digitalWrite(pump_pin, LOW); 
-    Serial.println("Pump off");
-  }
 }
